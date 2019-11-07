@@ -1,0 +1,140 @@
+<!DOCTYPE html><html lang="en"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta name="viewport" content="width=device-width, initial-scale=0.5"><link rel="stylesheet" href="/css/post.css"><link rel="icon" href="/img/favicon.png"><title>Upload</title><meta name="generator" content="Hexo 4.0.0"></head><body>　　<div class="inner"><h2>Upload</h2><h1 id="ant-design-Upload组件的使用总结。"><a href="#ant-design-Upload组件的使用总结。" class="headerlink" title="ant design  Upload组件的使用总结。"></a>ant design  Upload组件的使用总结。</h1><p>事先说明：<a href="httpsant.designcomponentsupload-cn">upload </a>所使用rc-upload组件在npm是有单独的包，upload对其进一步封装。rc-upload</p>
+<p>有更多的API选择。</p>
+<p>a name=e6cefb85a</p>
+<h2 id="需求"><a href="#需求" class="headerlink" title="需求"></a>需求</h2><p>要求限制上传图片的格式、大小、分辨率。</p>
+<p>a name=923dd7a2a</p>
+<h2 id="简单介绍"><a href="#简单介绍" class="headerlink" title="简单介绍"></a>简单介绍</h2><p>这是一个最简单的upload组件使用</p>
+<pre><code class="xml">Upload action=...
+    上传
+Upload</code></pre>
+<p>简单说一下关键几个参数</p>
+<p> 参数  作用 </p>
+<hr>
+<p> action  上传的服务器地址，使用默认上传行为必填<br> beforeUpload  默认上传行为之前的钩子函数，用来限制上传文件<br> customRequest  自定义上传（本文关键）<br> fileList  已上传列表 </p>
+<p>本文的关键就在于customRequest、fileList和onRemove三个api。</p>
+<p>a name=43638351a</p>
+<h2 id="平常使用"><a href="#平常使用" class="headerlink" title="平常使用"></a>平常使用</h2><p>该组件已经将上传文件封装的及其简单</p>
+<pre><code class="xml">Upload action=... onChange={...} beforeUpload={...}
+    上传
+Upload</code></pre>
+<p>在所有提供的钩子函数都会接受file参数。它就是用户上传文件的RcFile形式。</p>
+<p>主要参数有</p>
+<pre><code class="javascript">{
+   type         文件格式
+   size      文件大小
+   status      状态有：uploading done error removed 只有在onChange事件才会变化
+   response  服务端响应内容，
+}</code></pre>
+<p>在beforeUpload调用file的type和size来限制上传文件。beforeUpload如果返回false就是取消上传行为。</p>
+<p>来至官网的示例</p>
+<pre><code class="javascript">function beforeUpload(file) {
+  const isJPG = file.type === &#39;imagejpeg&#39;;
+  if (!isJPG) {
+    message.error(&#39;You can only upload JPG file!&#39;);
+  }
+  const isLt2M = file.size  1024  1024  2;
+  if (!isLt2M) {
+    message.error(&#39;Image must smaller than 2MB!&#39;);
+  }
+  return isJPG &amp;&amp; isLt2M;
+}</code></pre>
+<p>当文件开始上传的时候，这时候调用onChange 读取到file.response获取到服务端的回调,来实现我们的功能。</p>
+<p>a name=2683555aa</p>
+<h2 id="进一步使用"><a href="#进一步使用" class="headerlink" title="进一步使用"></a>进一步使用</h2><ol>
+<li>显然默认的行为不能实现我的要求，file对象并没有分辨率的参数。我所采用的是把上传的图片实例化读取它的高宽。这样出现一个问题。image只有在触发load事件之后才能被读取宽高，我们没有办法将我们的判断传递给beforeUpload，也就阻止不了上传事件。</li>
+</ol>
+<pre><code class="javascript">const { file } = files
+ files是customRequest参数
+const reader = new FileReader();
+    reader.addEventListener(load, e = {
+      const data = e.target.result;
+      加载图片获取图片真实宽度和高度
+      const image = new Image();
+      image.addEventListener(load, () = {
+        const w = image.width;
+        const h = image.height;
+      });
+      image.src = data;
+    });
+ reader.readAsDataURL(file);
+ 我们传递不出false。</code></pre>
+<p>所有只能使用customRequest来覆盖默认上传。但这样有两个弊端。</p>
+<ol>
+<li>上传状态无法被onChange捕获。</li>
+<li>我们需要自己控制fileList。</li>
+<li>组件showUploadList会出现我们不想展示的图片。</li>
+</ol>
+<p>其实到这一步已经可以实现效果，但是我想要组件的showUploadList所展示的上传列表，毕竟别人已经写好动画了。</p>
+<p>所有我们要控制fileList于state绑定，初始值设为[]，上传成功后fileList增加新的元素。</p>
+<pre><code class="javascript">customRequest = (files) = {
+    const { file } = files
+    ... 前面限制
+    let formData = new FormData();
+    formData.append(file, file);
+    http(&#39;&#39;,formData).then(
+          res =
+        this.setState(() = ({ fileList [{ ...file }, { url, status done }] }));
+    )
+}</code></pre>
+<p>设置的fileList是安装官方defaultFileList 的形式添加的</p>
+<pre><code class="json">{
+    uid &#39;1&#39;,
+    name &#39;xxx.png&#39;,
+    status &#39;done&#39;,
+    response &#39;Server Error 500&#39;,  custom error message to show
+    url &#39;httpwww.baidu.comxxx.png&#39;,
+  }</code></pre>
+<p>a name=onRemovea</p>
+<h2 id="onRemove"><a href="#onRemove" class="headerlink" title="onRemove"></a>onRemove</h2><p>使用了showUploadList就需要使用onRemove来删除文件列表元素。我们先看看onRemove的介绍</p>
+<p> 点击移除文件时的回调，返回值为 false 时不移除。支持返回一个 Promise 对象，Promise 对象 resolve(false) 或 reject 时不移除</p>
+<p>由于同时涉及到表单我也用了Form组件，同样也要使用Form组件的表单验证。</p>
+<pre><code class="javascript">onRemove = () = {
+    this.setState(() = ({
+        fileList []
+  }));
+}</code></pre>
+<p>图片是删除里但是并没有触发Form的验证。Form都是靠表单的onChange来触发的。所有查了一下源码。</p>
+<pre><code class="javascript">handleRemove(file UploadFile) {
+    const { onRemove } = this.props;
+    Promise.resolve(typeof onRemove === &#39;function&#39;  onRemove(file)  onRemove).then(ret = {
+       Prevent removing file
+      if (ret === false) {
+        return;
+      }
+
+      const removedFileList = removeFileItem(file, this.state.fileList);
+      if (removedFileList) {
+        this.onChange({
+          file,
+          fileList removedFileList,
+        });
+      }
+    });
+  }</code></pre>
+<p>其中的 removeFileItem 如下</p>
+<pre><code class="javascript">export function removeFileItem(file UploadFile, fileList UploadFile[]) {
+  const matchKey = file.uid !== undefined  &#39;uid&#39;  &#39;name&#39;;
+  const removed = fileList.filter(item = item[matchKey] !== file[matchKey]);
+  if (removed.length === fileList.length) {
+    return null;
+  }
+  return removed;
+}</code></pre>
+<p>可以看出之前fileList已被我们设为[]，removeFileItem 返回为null，所以没有触发onChange。没办法，我们只能自己触发了,传入参数上面的代码已给出。</p>
+<pre><code class="jsx">Upload ref = ref = this.ref = ref
+    上传
+Upload
+
+onRemove = () = {
+    ... 前面操作
+    this.ref.onChange({file,[]})
+}</code></pre>
+<p>至此我个人所有需求全部解决。但是我在逛github的Issues 的时候发现有人提这样无法获取上传的进度。</p>
+<p>ajax是有原生获取上传文件进度的方法的。我使用的是axios的onUploadProgress方法。</p>
+<pre><code class="jsx">onUploadProgress(progressEvent) = { 
+     const {lengthComputable, loaded, total} = progressEvent 
+    lengthComputable, 是否能够被读取长度
+    loaded 已上传,
+       total 以下载    
+ },</code></pre>
+</div><script src="/js/jquery.min.js"></script><script src="/js/main.js"></script></body></html>
